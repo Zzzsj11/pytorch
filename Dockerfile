@@ -1,4 +1,4 @@
-FROM promisekoloer/mmrotate:mmrotate1.1
+FROM promisekoloer/mmrotate:mmrotate1.x.1
 
 RUN apt-get update && apt-get install -y libgl1-mesa-glx libpci-dev curl nano psmisc zip git && apt-get --fix-broken install -y
 

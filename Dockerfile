@@ -1,29 +1,42 @@
-ARG PYTORCH="1.6.0"
-ARG CUDA="10.1"
-ARG CUDNN="7"
+# ---------- 基础镜像 ----------
+FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-devel
 
-FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
+# ---------- 基本环境变量 ----------
+ENV DEBIAN_FRONTEND=noninteractive \
+    TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX" \
+    TORCH_NVCC_FLAGS="-Xfatbin -compress-all" \
+    CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
 
-ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
-ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
-ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
-
-# To fix GPG key error when running apt-get update
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
-
-RUN apt-get update && apt-get install -y ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 \
+# ---------- 系统依赖 ----------
+RUN apt-get update && apt-get install -y \
+    ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libxrender-dev wget curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install openmim
-RUN pip install --no-cache-dir -U openmim
-# Install mmengine, mmcv, and mmdetection
-RUN mim install --no-cache-dir mmengine "mmcv>=2.0.0rc2" "mmdet>=3.0.0rc2"
-# Install MMRotate
-RUN conda clean --all -y
-RUN git clone https://github.com/open-mmlab/mmrotate.git -b 1.x /mmrotate
+# ---------- Python 依赖 ----------
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# ---------- 安装 OpenMMLab 栈 ----------
+# 安装 openmim
+RUN pip install --no-cache-dir openmim
+
+# 固定版本：mmengine, mmcv, mmdet
+RUN mim install "mmengine==0.7.1"
+RUN pip install mmcv==2.0.1 -f https://download.openmmlab.com/mmcv/dist/cu117/torch2.0/index.html
+RUN pip install mmdet==3.0.0rc6
+
+# ---------- 安装 torchvision 对齐 Torch ----------
+# Torch 2.0.1 <-> torchvision 0.15.2
+RUN pip install --no-cache-dir torchvision==0.15.2
+
+# ---------- 安装其他常用依赖 ----------
+RUN pip install --no-cache-dir tensorboardX ptflops==0.7 wandb fvcore openpyxl timm==0.5.4
+
+# ---------- 安装 MMRotate ----------
 WORKDIR /mmrotate
-ENV FORCE_CUDA="1"
+RUN git clone https://github.com/open-mmlab/mmrotate.git -b 1.x .
 RUN pip install -r requirements/build.txt
 RUN pip install --no-cache-dir -e .
+
+# 默认启动目录
+WORKDIR /mmrotate

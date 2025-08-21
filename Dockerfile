@@ -1,30 +1,29 @@
-# ========= Base: Torch 2.0.1 + CUDA 11.7 =========
-FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-devel
+ARG PYTORCH="1.6.0"
+ARG CUDA="10.1"
+ARG CUDNN="7"
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
 
-# 常用依赖 & 编译工具（mmcv/mmdet/可视化常见依赖）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential ninja-build git curl ca-certificates \
-    libgl1-mesa-glx libglib2.0-0 ffmpeg && \
-    rm -rf /var/lib/apt/lists/*
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
+ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
+ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
 
-# Python 基础工具 & 你的第三方包
-RUN pip install --upgrade pip setuptools wheel && \
-    pip install openmim tensorboardX ptflops==0.7 wandb fvcore openpyxl timm==0.5.4 && \
-    pip install "yapf>=0.40.0" "scipy==1.10.1"
+# To fix GPG key error when running apt-get update
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
 
-# MM 系列（严格按你的要求）
-# 1) mmengine：与 mmcv/mmdet/mmrotate 1.x 兼容
-RUN pip install "mmengine>=0.10.0,<1.0.0"
-# 2) mmcv==2.0.1 从 cu117/torch2.0 的官方索引安装
-#    若遇到官方站证书问题，--trusted-host 可避免校验证书导致的失败
-RUN pip install mmcv==2.0.1 \
-    -f https://download.openmmlab.com/mmcv/dist/cu117/torch2.0/index.html \
-    --trusted-host download.openmmlab.com
-# 3) mmdet==3.0.0rc6
-RUN pip install mmdet==3.0.0rc6
+RUN apt-get update && apt-get install -y ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /workspace
-CMD ["/bin/bash"]
+# Install openmim
+RUN pip install --no-cache-dir -U openmim
+# Install mmengine, mmcv, and mmdetection
+RUN mim install --no-cache-dir mmengine "mmcv>=2.0.0rc2" "mmdet>=3.0.0rc2"
+# Install MMRotate
+RUN conda clean --all -y
+RUN git clone https://github.com/open-mmlab/mmrotate.git -b 1.x /mmrotate
+WORKDIR /mmrotate
+ENV FORCE_CUDA="1"
+RUN pip install -r requirements/build.txt
+RUN pip install --no-cache-dir -e .
